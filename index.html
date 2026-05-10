@@ -28,12 +28,12 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-.container { max-width: 480px; margin: 0 auto; padding: 12px; }
+.container { max-width: 480px; margin: 0 auto; padding: 8px; }
 
 h1 {
-  font-size: 1.5rem;
+  font-size: 1.2rem;
   text-align: center;
-  padding: 12px 0;
+  padding: 6px 0;
   font-weight: 700;
 }
 
@@ -43,15 +43,15 @@ h1 span { color: var(--accent); }
 .tabs {
   display: flex;
   gap: 4px;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
   background: var(--surface);
-  border-radius: 10px;
-  padding: 4px;
+  border-radius: 8px;
+  padding: 3px;
 }
 
 .tab {
   flex: 1;
-  padding: 10px 8px;
+  padding: 6px 4px;
   border: none;
   background: none;
   color: var(--muted);
@@ -466,16 +466,16 @@ h1 span { color: var(--accent); }
 /* Quick entry */
 .quick-fields {
   display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: 4px;
+  margin-bottom: 6px;
 }
 
 .quick-field {
   flex: 1;
   background: var(--surface);
   border: 2px solid var(--border);
-  border-radius: 10px;
-  padding: 8px 4px;
+  border-radius: 8px;
+  padding: 4px 2px;
   text-align: center;
   cursor: pointer;
   transition: border-color 0.15s;
@@ -487,30 +487,30 @@ h1 span { color: var(--accent); }
 .quick-field.active.filled { border-color: var(--accent); }
 
 .quick-field-label {
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   color: var(--muted);
   font-weight: 700;
   letter-spacing: 0.5px;
 }
 
 .quick-field-value {
-  font-size: 1.6rem;
+  font-size: 1.3rem;
   font-weight: 800;
-  margin-top: 2px;
+  margin-top: 1px;
   font-variant-numeric: tabular-nums;
 }
 
 .quick-verdict {
-  min-height: 52px;
-  border-radius: 10px;
+  min-height: 40px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   text-align: center;
-  padding: 8px 12px;
+  padding: 6px 10px;
   transition: all 0.2s;
 }
 
@@ -522,17 +522,17 @@ h1 span { color: var(--accent); }
 .numpad {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  gap: 4px;
 }
 
 .num-btn {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   color: var(--text);
-  font-size: 1.5rem;
+  font-size: 1.2rem;
   font-weight: 600;
-  padding: 14px 0;
+  padding: 10px 0;
   cursor: pointer;
   transition: background 0.1s;
   -webkit-tap-highlight-color: transparent;
@@ -543,13 +543,13 @@ h1 span { color: var(--accent); }
 
 .quick-clear {
   width: 100%;
-  margin-top: 8px;
-  padding: 8px;
+  margin-top: 6px;
+  padding: 6px;
   background: none;
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   cursor: pointer;
 }
 
@@ -618,7 +618,7 @@ h1 span { color: var(--accent); }
   <!-- JUDGE PANEL (OCR) -->
   <div class="panel" id="panel-judge">
     <div class="upload-zone" id="uploadZone">
-      <input type="file" accept="image/*" capture="environment" id="fileInput">
+      <input type="file" accept="image/*" id="fileInput">
       <div class="upload-icon">📸</div>
       <p>Tap to upload a ride offer screenshot</p>
     </div>
@@ -1294,23 +1294,6 @@ document.querySelectorAll('.num-btn').forEach(btn => {
     // Mark filled
     const btn2 = $('qf-' + field);
     btn2.classList.toggle('filled', quickState[field].length > 0);
-
-    // Auto-advance to next empty field
-    if (key !== 'del' && key !== '.') {
-      const order = ['fare', 'time', 'dist'];
-      const cur = order.indexOf(field);
-      for (let i = 1; i <= 2; i++) {
-        const next = order[(cur + i) % 3];
-        if (!quickState[next]) {
-          setTimeout(() => {
-            document.querySelectorAll('.quick-field').forEach(x => x.classList.remove('active'));
-            $('qf-' + next).classList.add('active');
-            quickState.active = next;
-          }, 150);
-          break;
-        }
-      }
-    }
 
     quickAutoJudge();
   });
