@@ -463,6 +463,96 @@ h1 span { color: var(--accent); }
 
 .toggle.on::after { transform: translateX(20px); }
 
+/* Quick entry */
+.quick-fields {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.quick-field {
+  flex: 1;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 4px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  color: var(--text);
+}
+
+.quick-field.active { border-color: var(--accent); }
+.quick-field.filled { border-color: var(--green); }
+.quick-field.active.filled { border-color: var(--accent); }
+
+.quick-field-label {
+  font-size: 0.65rem;
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.quick-field-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.quick-verdict {
+  min-height: 52px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-align: center;
+  padding: 8px 12px;
+  transition: all 0.2s;
+}
+
+.quick-verdict.accept { background: rgba(34,197,94,0.15); color: var(--green); }
+.quick-verdict.reject { background: rgba(239,68,68,0.15); color: var(--red); }
+.quick-verdict.marginal { background: rgba(234,179,8,0.15); color: var(--yellow); }
+.quick-verdict.waiting { background: var(--surface); color: var(--muted); }
+
+.numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.num-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 1.5rem;
+  font-weight: 600;
+  padding: 14px 0;
+  cursor: pointer;
+  transition: background 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.num-btn:active { background: var(--border); }
+.num-btn.del { color: var(--red); }
+
+.quick-clear {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
 .paste-btn {
   width: 100%;
   padding: 10px;
@@ -482,13 +572,51 @@ h1 span { color: var(--accent); }
   <h1>Ride<span>Judge</span></h1>
 
   <div class="tabs">
-    <button class="tab active" data-tab="judge">Judge</button>
+    <button class="tab active" data-tab="quick">Quick</button>
+    <button class="tab" data-tab="judge">OCR</button>
     <button class="tab" data-tab="history">History</button>
     <button class="tab" data-tab="settings">Settings</button>
   </div>
 
-  <!-- JUDGE PANEL -->
-  <div class="panel active" id="panel-judge">
+  <!-- QUICK ENTRY PANEL -->
+  <div class="panel active" id="panel-quick">
+    <div class="quick-fields">
+      <button class="quick-field active" id="qf-fare" data-field="fare">
+        <div class="quick-field-label">FARE</div>
+        <div class="quick-field-value" id="qv-fare">$<span id="qd-fare">0</span></div>
+      </button>
+      <button class="quick-field" id="qf-time" data-field="time">
+        <div class="quick-field-label">TRIP MIN</div>
+        <div class="quick-field-value" id="qv-time"><span id="qd-time">0</span></div>
+      </button>
+      <button class="quick-field" id="qf-dist" data-field="dist">
+        <div class="quick-field-label">TRIP KM</div>
+        <div class="quick-field-value" id="qv-dist"><span id="qd-dist">0</span></div>
+      </button>
+    </div>
+
+    <div class="quick-verdict" id="quickVerdict"></div>
+
+    <div class="numpad">
+      <button class="num-btn" data-num="1">1</button>
+      <button class="num-btn" data-num="2">2</button>
+      <button class="num-btn" data-num="3">3</button>
+      <button class="num-btn" data-num="4">4</button>
+      <button class="num-btn" data-num="5">5</button>
+      <button class="num-btn" data-num="6">6</button>
+      <button class="num-btn" data-num="7">7</button>
+      <button class="num-btn" data-num="8">8</button>
+      <button class="num-btn" data-num="9">9</button>
+      <button class="num-btn dot" data-num=".">.</button>
+      <button class="num-btn" data-num="0">0</button>
+      <button class="num-btn del" data-num="del">C</button>
+    </div>
+
+    <button class="quick-clear" id="quickClear">Clear All</button>
+  </div>
+
+  <!-- JUDGE PANEL (OCR) -->
+  <div class="panel" id="panel-judge">
     <div class="upload-zone" id="uploadZone">
       <input type="file" accept="image/*" capture="environment" id="fileInput">
       <div class="upload-icon">📸</div>
@@ -1135,6 +1263,133 @@ function showToast(msg) {
   t.textContent = msg;
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// --- Quick Entry ---
+const quickState = { active: 'fare', fare: '', time: '', dist: '', lastSaved: '' };
+
+document.querySelectorAll('.quick-field').forEach(f => {
+  f.addEventListener('click', () => {
+    document.querySelectorAll('.quick-field').forEach(x => x.classList.remove('active'));
+    f.classList.add('active');
+    quickState.active = f.dataset.field;
+  });
+});
+
+document.querySelectorAll('.num-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const key = btn.dataset.num;
+    const field = quickState.active;
+
+    if (key === 'del') {
+      quickState[field] = '';
+    } else if (key === '.') {
+      if (!quickState[field].includes('.')) quickState[field] += '.';
+    } else {
+      if (quickState[field].length < 6) quickState[field] += key;
+    }
+
+    $('qd-' + field).textContent = quickState[field] || '0';
+
+    // Mark filled
+    const btn2 = $('qf-' + field);
+    btn2.classList.toggle('filled', quickState[field].length > 0);
+
+    // Auto-advance to next empty field
+    if (key !== 'del' && key !== '.') {
+      const order = ['fare', 'time', 'dist'];
+      const cur = order.indexOf(field);
+      for (let i = 1; i <= 2; i++) {
+        const next = order[(cur + i) % 3];
+        if (!quickState[next]) {
+          setTimeout(() => {
+            document.querySelectorAll('.quick-field').forEach(x => x.classList.remove('active'));
+            $('qf-' + next).classList.add('active');
+            quickState.active = next;
+          }, 150);
+          break;
+        }
+      }
+    }
+
+    quickAutoJudge();
+  });
+});
+
+$('quickClear').addEventListener('click', () => {
+  quickState.fare = '';
+  quickState.time = '';
+  quickState.dist = '';
+  ['fare', 'time', 'dist'].forEach(f => {
+    $('qd-' + f).textContent = '0';
+    $('qf-' + f).classList.remove('filled');
+  });
+  document.querySelectorAll('.quick-field').forEach(x => x.classList.remove('active'));
+  $('qf-fare').classList.add('active');
+  quickState.active = 'fare';
+  quickState.lastSaved = '';
+  $('quickVerdict').className = 'quick-verdict waiting';
+  $('quickVerdict').textContent = '';
+});
+
+function quickAutoJudge() {
+  const fare = parseFloat(quickState.fare);
+  const tripMin = parseFloat(quickState.time);
+  const tripKm = parseFloat(quickState.dist);
+
+  if (!fare || !tripMin || !tripKm) {
+    const missing = [];
+    if (!fare) missing.push('fare');
+    if (!tripMin) missing.push('time');
+    if (!tripKm) missing.push('km');
+    $('quickVerdict').className = 'quick-verdict waiting';
+    $('quickVerdict').textContent = missing.length < 3 ? 'Enter ' + missing.join(' + ') : '';
+    return;
+  }
+
+  const s = loadSettings();
+  const perMin = fare / tripMin;
+  const perKm = fare / tripKm;
+
+  const minOk = perMin >= s.acceptPerMin;
+  const kmOk = perKm >= s.acceptPerKm;
+  const minMarg = perMin >= s.marginalPerMin;
+  const kmMarg = perKm >= s.marginalPerKm;
+
+  let verdict, reason;
+
+  // Dead zone check (no dropoff in quick mode, skip)
+  // Long trip override
+  if (tripKm > s.longTripDist && fare < s.longTripFare) {
+    verdict = 'reject';
+    reason = `$${fare.toFixed(0)} for ${tripKm.toFixed(0)}km, need $${s.longTripFare.toFixed(0)}+`;
+  } else if (minOk && kmOk) {
+    verdict = 'accept';
+    reason = `$${perMin.toFixed(2)}/min $${perKm.toFixed(2)}/km`;
+  } else if (minMarg && kmMarg) {
+    verdict = 'marginal';
+    reason = `$${perMin.toFixed(2)}/min $${perKm.toFixed(2)}/km`;
+  } else {
+    verdict = 'reject';
+    reason = `$${perMin.toFixed(2)}/min $${perKm.toFixed(2)}/km`;
+  }
+
+  $('quickVerdict').className = 'quick-verdict ' + verdict;
+  $('quickVerdict').textContent = verdict.toUpperCase() + '  ' + reason;
+
+  speak(verdict, reason);
+
+  const key = `${fare}-${tripMin}-${tripKm}`;
+  if (key !== quickState.lastSaved) {
+    quickState.lastSaved = key;
+    saveRide({
+      verdict, fare, perMin, perKm,
+      totalMin: tripMin, tripKm,
+      pickupMin: 0, tripMin,
+      dropoff: '', reason,
+      ts: Date.now()
+    });
+  }
 }
 
 // Init
