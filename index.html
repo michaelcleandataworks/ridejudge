@@ -541,6 +541,26 @@ h1 span { color: var(--accent); }
 .num-btn:active { background: var(--border); }
 .num-btn.del { color: var(--red); }
 
+.peak-toggle {
+  width: 100%;
+  padding: 6px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.peak-toggle.on {
+  background: rgba(234,179,8,0.2);
+  border-color: var(--yellow);
+  color: var(--yellow);
+}
+
 .quick-clear {
   width: 100%;
   margin-top: 6px;
@@ -594,6 +614,8 @@ h1 span { color: var(--accent); }
         <div class="quick-field-value" id="qv-dist"><span id="qd-dist">0</span></div>
       </button>
     </div>
+
+    <button class="peak-toggle" id="peakQuickToggle">Peak Mode OFF</button>
 
     <div class="quick-verdict" id="quickVerdict"></div>
 
@@ -805,7 +827,10 @@ const DEFAULT_SETTINGS = {
 function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem('rj_settings'));
-    return { ...DEFAULT_SETTINGS, ...saved };
+    const s = { ...DEFAULT_SETTINGS, ...saved };
+    const peakBtn = $('peakQuickToggle');
+    if (peakBtn) s.peakMode = peakBtn.classList.contains('on');
+    return s;
   } catch { return { ...DEFAULT_SETTINGS }; }
 }
 
@@ -837,6 +862,9 @@ function populateSettings() {
   $('setMarginalPerKm').value = s.marginalPerKm;
   $('setCraPerKm').value = s.craPerKm;
   $('togglePeak').classList.toggle('on', s.peakMode);
+  const peakBtn = $('peakQuickToggle');
+  peakBtn.classList.toggle('on', s.peakMode);
+  peakBtn.textContent = s.peakMode ? '⚡ Peak Mode ON' : 'Peak Mode OFF';
   $('setPeakPerMin').value = s.peakAcceptPerMin;
   $('setPeakPerKm').value = s.peakAcceptPerKm;
   $('setPickupRatio').value = s.pickupRatio;
@@ -1311,6 +1339,19 @@ function showToast(msg) {
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2500);
 }
+
+// --- Peak Toggle (Quick tab) ---
+$('peakQuickToggle').addEventListener('click', () => {
+  const btn = $('peakQuickToggle');
+  btn.classList.toggle('on');
+  const isOn = btn.classList.contains('on');
+  btn.textContent = isOn ? '⚡ Peak Mode ON' : 'Peak Mode OFF';
+  // Sync to settings toggle if visible
+  const settingsToggle = $('togglePeak');
+  if (settingsToggle) settingsToggle.classList.toggle('on', isOn);
+  // Re-judge with new thresholds
+  quickAutoJudge();
+});
 
 // --- Quick Entry ---
 const quickState = { active: 'fare', fare: '', time: '', dist: '', lastSaved: '' };
