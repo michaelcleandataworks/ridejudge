@@ -812,11 +812,18 @@ function extractFields(text) {
   const isUber = /uber/i.test(fullText);
 
   // --- FARE ---
-  // Collect all dollar amounts with their values
+  // OCR often drops decimal points from bold text: "$12.13" → "$1213", "$29.11" → "$2911"
   let fareFound = false;
   const allFares = [];
-  for (const m of fullText.matchAll(/[\$\xA4S]?\s?(\d+[\.,]\d{2})/g)) {
-    const val = parseFloat(m[0].replace(/[\$\xA4S\s]/g, '').replace(',', '.'));
+  // Match dollar amounts with or without decimals
+  for (const m of fullText.matchAll(/[\$\xA4]\s?(\d{3,4}|\d+[\.,]\d{1,2})/g)) {
+    let raw = m[1].replace(',', '.');
+    let val = parseFloat(raw);
+    // 3-4 digit number with no decimal → insert decimal before last 2 digits
+    if (/^\d{3,4}$/.test(raw)) {
+      val = val / 100;
+    }
+    if (isNaN(val) || val <= 0) continue;
     const pos = m.index;
     const afterText = fullText.slice(pos + m[0].length, pos + m[0].length + 10);
     const isHourly = /^\s*\/\s*h/i.test(afterText);
@@ -841,15 +848,14 @@ function extractFields(text) {
   let hourlyRate = 0;
   const hrFare = allFares.find(f => f.isHourly);
   if (hrFare) hourlyRate = hrFare.val;
-  // Broader hourly rate search: look for "XX.XX/hr" anywhere, even without $
+  // Broader hourly rate search: handle missing decimals too (e.g. "$2911/hr" → $29.11)
   if (!hourlyRate) {
-    const hrBroad = fullText.match(/(\d+[\.,]\d{2})\s*\/\s*h/i);
-    if (hrBroad) hourlyRate = parseFloat(hrBroad[1].replace(',', '.'));
-  }
-  // Even broader: "est. rate" or "est rate" near a number
-  if (!hourlyRate) {
-    const estMatch = fullText.match(/(\d+[\.,]\d{2})\s*\/?\s*h?r?\s*est/i);
-    if (estMatch) hourlyRate = parseFloat(estMatch[1].replace(',', '.'));
+    const hrBroad = fullText.match(/[\$]?\s?(\d{3,4}|\d+[\.,]\d{1,2})\s*\/\s*h/i);
+    if (hrBroad) {
+      let v = parseFloat(hrBroad[1].replace(',', '.'));
+      if (/^\d{3,4}$/.test(hrBroad[1])) v = v / 100;
+      hourlyRate = v;
+    }
   }
   console.log('OCR hourly rate:', hourlyRate);
 
