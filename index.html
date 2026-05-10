@@ -795,55 +795,91 @@ async function runOCR(imageSource) {
 function extractFields(text) {
   const lines = text.replace(/\r/g, '').split('\n').map(l => l.trim()).filter(Boolean);
   const fullText = lines.join(' ');
-  console.log('OCR lines:', lines);
+  console.log('OCR full text:', fullText);
 
-  // Fare: take the FIRST dollar amount, skip amounts followed by /hr or /hour
-  const fareMatches = [...fullText.matchAll(/\$\s?(\d+[\.,]\d{2})(?!\s*\/\s*h)/g)];
-  if (fareMatches.length) {
-    setField('fare', parseFloat(fareMatches[0][1].replace(',', '.')).toFixed(2));
+  // Fare: flexible dollar matching — OCR may read $ as S, miss it, etc.
+  // Skip amounts followed by /hr. Try $ first, then S, then bare numbers at line starts.
+  let fareFound = false;
+  const farePatternsInOrder = [
+    /[\$\xA4]\s?(\d+[\.,]\d{2})(?!\s*\/\s*h)/g,
+    /[S5]\s?(\d{1,3}[\.,]\d{2})(?!\s*\/\s*h)/g,
+  ];
+  for (const pat of farePatternsInOrder) {
+    if (fareFound) break;
+    const matches = [...fullText.matchAll(pat)];
+    if (matches.length) {
+      setField('fare', parseFloat(matches[0][1].replace(',', '.')).toFixed(2));
+      fareFound = true;
+    }
+  }
+  // Last resort: look for a line that's just a dollar amount (common OCR output for bold fare)
+  if (!fareFound) {
+    for (const line of lines) {
+      const m = line.match(/^[\$S]?\s?(\d+[\.,]\d{2})$/);
+      if (m) {
+        setField('fare', parseFloat(m[1].replace(',', '.')).toFixed(2));
+        fareFound = true;
+        break;
+      }
+    }
   }
 
-  // Lyft format: "X mins · X.X km" appears twice (pickup then trip)
-  // Uber format: "X min (X.X km) away" for pickup, "X mins (X.X km) trip" for trip
-  const lyftPairs = [...fullText.matchAll(/(\d+\.?\d*)\s*min[s]?\s*[·•.\-]\s*(\d+\.?\d*)\s*km/gi)];
-  const uberAway = fullText.match(/(\d+\.?\d*)\s*min[s]?\s*\((\d+\.?\d*)\s*km\)\s*away/i);
-  const uberTrip = fullText.match(/(\d+\.?\d*)\s*min[s]?\s*\((\d+\.?\d*)\s*km\)\s*trip/i);
+  // Lyft format: "X mins · X.X km" — the middle dot can be read as many characters
+  // Use very flexible separator: any non-alphanumeric chars between min and km number
+  const lyftPairs = [...fullText.matchAll(/(\d+\.?\d*)\s*min[s]?\s*[^a-zA-Z0-9]{0,5}\s*(\d+\.?\d*)\s*km/gi)];
+  // Uber format
+  const uberAway = fullText.match(/(\d+\.?\d*)\s*min[s]?\s*\(?(\d+\.?\d*)\s*km\)?\s*away/i);
+  const uberTrip = fullText.match(/(\d+\.?\d*)\s*min[s]?\s*\(?(\d+\.?\d*)\s*km\)?\s*trip/i);
 
   if (lyftPairs.length >= 2) {
-    // First pair is pickup, second is trip
     setField('pickupTime', parseFloat(lyftPairs[0][1]).toFixed(1));
     setField('tripTime', parseFloat(lyftPairs[1][1]).toFixed(1));
     setField('tripDist', parseFloat(lyftPairs[1][2]).toFixed(2));
-  } else if (lyftPairs.length === 1) {
-    // Only one pair found, treat as trip
-    setField('tripTime', parseFloat(lyftPairs[0][1]).toFixed(1));
-    setField('tripDist', parseFloat(lyftPairs[0][2]).toFixed(2));
   } else if (uberTrip) {
     setField('tripTime', parseFloat(uberTrip[1]).toFixed(1));
     setField('tripDist', parseFloat(uberTrip[2]).toFixed(2));
+  } else if (lyftPairs.length === 1) {
+    setField('tripTime', parseFloat(lyftPairs[0][1]).toFixed(1));
+    setField('tripDist', parseFloat(lyftPairs[0][2]).toFixed(2));
   }
 
   if (uberAway) {
     setField('pickupTime', parseFloat(uberAway[1]).toFixed(1));
   }
 
-  // Fallback: if no structured pairs found, try loose patterns
+  // Fallback: grab all km values and min values separately
   if (!lyftPairs.length && !uberTrip) {
-    const distMatch = fullText.match(/(\d+[\.,]?\d*)\s*km/i);
-    if (distMatch) {
-      setField('tripDist', parseFloat(distMatch[1].replace(',', '.')).toFixed(2));
+    const kmMatches = [...fullText.matchAll(/(\d+[\.,]?\d*)\s*km/gi)];
+    if (kmMatches.length >= 2) {
+      const vals = kmMatches.map(m => parseFloat(m[1].replace(',', '.')));
+      setField('tripDist', Math.max(...vals).toFixed(2));
+    } else if (kmMatches.length === 1) {
+      setField('tripDist', parseFloat(kmMatches[0][1].replace(',', '.')).toFixed(2));
     }
 
     const timeMatches = [...fullText.matchAll(/(\d+\.?\d*)\s*min[s]?/gi)];
     if (timeMatches.length >= 2) {
-      setField('pickupTime', parseFloat(timeMatches[0][1]).toFixed(1));
-      setField('tripTime', parseFloat(timeMatches[1][1]).toFixed(1));
+      const vals = timeMatches.map(m => parseFloat(m[1]));
+      setField('tripTime', Math.max(...vals).toFixed(1));
+      setField('pickupTime', Math.min(...vals).toFixed(1));
     } else if (timeMatches.length === 1) {
       setField('tripTime', parseFloat(timeMatches[0][1]).toFixed(1));
     }
   }
 
-  // Pickup from "X min away" (some Uber formats)
+  // If we got pairs but only 1 matched, still try to find the larger km as trip distance
+  if (lyftPairs.length === 1) {
+    const allKm = [...fullText.matchAll(/(\d+[\.,]?\d*)\s*km/gi)];
+    if (allKm.length >= 2) {
+      const vals = allKm.map(m => parseFloat(m[1].replace(',', '.')));
+      const maxKm = Math.max(...vals);
+      if (maxKm > parseFloat($('tripDist').value || 0)) {
+        setField('tripDist', maxKm.toFixed(2));
+      }
+    }
+  }
+
+  // Pickup from "X min away" (some Uber formats without km)
   if (!uberAway && !lyftPairs.length) {
     const awayMatch = fullText.match(/(\d+\.?\d*)\s*min[s]?\s*away/i);
     if (awayMatch) {
@@ -851,12 +887,29 @@ function extractFields(text) {
     }
   }
 
-  // Drop-off: check for known dead-zone keywords
+  // Drop-off: first check dead-zone keywords, then try to extract destination text
   const settings = loadSettings();
+  let dropoffFound = false;
   for (const kw of settings.deadKeywords) {
     if (fullText.toLowerCase().includes(kw.toLowerCase())) {
       setField('dropoff', kw);
+      dropoffFound = true;
       break;
+    }
+  }
+
+  // Extract destination from address lines (text after the trip mins·km line)
+  if (!dropoffFound) {
+    const addressPatterns = [
+      /(?:NE|NW|SE|SW|Calgary|AB)\b/i,
+    ];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (addressPatterns.some(p => p.test(line)) && !/min|km|\$|hr|est|rate|away|trip|Lyft|Uber|Accept/i.test(line)) {
+        setField('dropoff', line);
+        dropoffFound = true;
+        break;
+      }
     }
   }
 }
