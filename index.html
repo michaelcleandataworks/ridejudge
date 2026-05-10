@@ -530,6 +530,9 @@ h1 span { color: var(--accent); }
     </div>
 
     <button class="judge-btn" id="judgeBtn">Judge This Ride</button>
+
+    <div id="ocrDebug" style="display:none; margin-top:12px; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px; font-size:0.75rem; color:var(--muted); white-space:pre-wrap; word-break:break-all; max-height:200px; overflow-y:auto;"></div>
+    <button class="paste-btn" id="toggleDebug" style="margin-top:4px; font-size:0.75rem;">Show OCR text</button>
   </div>
 
   <!-- HISTORY PANEL -->
@@ -703,6 +706,12 @@ $('toggleVoice').addEventListener('click', () => {
 
 $('saveSettings').addEventListener('click', saveSettingsToStorage);
 
+$('toggleDebug').addEventListener('click', () => {
+  const d = $('ocrDebug');
+  d.style.display = d.style.display === 'none' ? 'block' : 'none';
+  $('toggleDebug').textContent = d.style.display === 'none' ? 'Show OCR text' : 'Hide OCR text';
+});
+
 // --- Image upload ---
 let currentImage = null;
 
@@ -783,6 +792,7 @@ async function runOCR(imageSource) {
 
     const text = result.data.text;
     console.log('OCR raw text:', text);
+    $('ocrDebug').textContent = text;
     extractFields(text);
   } catch (err) {
     console.error('OCR error:', err);
