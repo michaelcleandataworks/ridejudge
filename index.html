@@ -867,7 +867,7 @@ function judgeRide() {
 
   // Long trip fare check
   if (tripKm > s.longTripDist && fare < s.longTripFare) {
-    if (verdict === 'accept') {
+    if (verdict === 'accept' || verdict === 'marginal') {
       verdict = 'reject';
       reason = `${tripKm.toFixed(1)} km trip but only $${fare.toFixed(2)}, need $${s.longTripFare.toFixed(0)} for trips over ${s.longTripDist} km`;
     } else {
