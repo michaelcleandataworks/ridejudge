@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>RideJudge</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #111;
+  --surface: #1a1a1a;
+  --border: #333;
+  --text: #eee;
+  --muted: #888;
+  --accent: #4a9eff;
+  --green: #22c55e;
+  --red: #ef4444;
+  --yellow: #eab308;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.container { max-width: 480px; margin: 0 auto; padding: 12px; }
+
+h1 {
+  font-size: 1.5rem;
+  text-align: center;
+  padding: 12px 0;
+  font-weight: 700;
+}
+
+h1 span { color: var(--accent); }
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.tab {
+  flex: 1;
+  padding: 10px 8px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* Upload area */
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 32px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+
+.upload-zone:hover, .upload-zone.dragover {
+  border-color: var(--accent);
+}
+
+.upload-zone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.upload-zone p { color: var(--muted); font-size: 0.9rem; margin-top: 8px; }
+.upload-icon { font-size: 2.5rem; }
+
+/* Preview */
+.preview-wrap {
+  display: none;
+  margin-top: 12px;
+  position: relative;
+}
+
+.preview-wrap img {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.preview-clear {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+/* OCR status */
+.ocr-status {
+  display: none;
+  text-align: center;
+  padding: 16px;
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+
+.ocr-status .spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Input fields */
+.fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field.full { grid-column: 1 / -1; }
+
+.field label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.field input, .field select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.field input:focus, .field select:focus {
+  border-color: var(--accent);
+}
+
+.field input.ocr-filled {
+  border-color: var(--green);
+  background: rgba(34,197,94,0.05);
+}
+
+/* Judge button */
+.judge-btn {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 16px;
+  transition: opacity 0.2s;
+}
+
+.judge-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.judge-btn:active:not(:disabled) { opacity: 0.8; }
+
+/* Verdict */
+.verdict-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: fadeIn 0.3s;
+}
+
+.verdict-overlay.show { display: flex; }
+
+.verdict-overlay.accept { background: linear-gradient(135deg, #064e3b, #065f46); }
+.verdict-overlay.reject { background: linear-gradient(135deg, #7f1d1d, #991b1b); }
+.verdict-overlay.marginal { background: linear-gradient(135deg, #713f12, #854d0e); }
+
+.verdict-word {
+  font-size: 3.5rem;
+  font-weight: 900;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.verdict-fare {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-top: 8px;
+  opacity: 0.9;
+}
+
+.verdict-reason {
+  font-size: 1.1rem;
+  margin-top: 16px;
+  text-align: center;
+  line-height: 1.5;
+  max-width: 340px;
+  opacity: 0.85;
+}
+
+.verdict-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  margin-top: 24px;
+  text-align: center;
+}
+
+.verdict-stat-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.verdict-stat-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.6;
+  margin-top: 2px;
+}
+
+.verdict-close {
+  margin-top: 32px;
+  padding: 12px 32px;
+  border: 2px solid rgba(255,255,255,0.3);
+  background: none;
+  color: #fff;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* History */
+.history-list { display: flex; flex-direction: column; gap: 8px; }
+
+.history-card {
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 12px 14px;
+  border-left: 4px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.history-card.accept { border-left-color: var(--green); }
+.history-card.reject { border-left-color: var(--red); }
+.history-card.marginal { border-left-color: var(--yellow); }
+
+.history-left { flex: 1; }
+
+.history-verdict {
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.history-card.accept .history-verdict { color: var(--green); }
+.history-card.reject .history-verdict { color: var(--red); }
+.history-card.marginal .history-verdict { color: var(--yellow); }
+
+.history-detail {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.history-fare {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.history-time {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: 2px;
+  text-align: right;
+}
+
+.history-empty {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--muted);
+}
+
+.history-clear {
+  display: block;
+  margin: 16px auto 0;
+  padding: 8px 20px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+/* Settings */
+.settings-group {
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.settings-group h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.setting-row + .setting-row {
+  border-top: 1px solid var(--border);
+}
+
+.setting-label {
+  font-size: 0.9rem;
+}
+
+.setting-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text);
+  font-size: 0.9rem;
+  width: 90px;
+  text-align: right;
+  outline: none;
+}
+
+.setting-input:focus { border-color: var(--accent); }
+
+.setting-textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 0.85rem;
+  outline: none;
+  resize: vertical;
+  min-height: 60px;
+  margin-top: 6px;
+  font-family: inherit;
+}
+
+.settings-save {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  z-index: 200;
+  opacity: 0;
+  transition: opacity 0.3s;
+  border: 1px solid var(--border);
+}
+
+.toast.show { opacity: 1; }
+
+.toggle {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border: none;
+}
+
+.toggle.on { background: var(--accent); }
+
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.toggle.on::after { transform: translateX(20px); }
+
+.paste-btn {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  margin-top: 8px;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Ride<span>Judge</span></h1>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="judge">Judge</button>
+    <button class="tab" data-tab="history">History</button>
+    <button class="tab" data-tab="settings">Settings</button>
+  </div>
+
+  <!-- JUDGE PANEL -->
+  <div class="panel active" id="panel-judge">
+    <div class="upload-zone" id="uploadZone">
+      <input type="file" accept="image/*" capture="environment" id="fileInput">
+      <div class="upload-icon">📸</div>
+      <p>Tap to upload a ride offer screenshot</p>
+    </div>
+
+    <button class="paste-btn" id="pasteBtn">Paste from clipboard</button>
+
+    <div class="preview-wrap" id="previewWrap">
+      <img id="previewImg" alt="Screenshot preview">
+      <button class="preview-clear" id="clearBtn">&times;</button>
+    </div>
+
+    <div class="ocr-status" id="ocrStatus">
+      <span class="spinner"></span> Reading screenshot...
+    </div>
+
+    <div class="fields">
+      <div class="field">
+        <label>Fare ($)</label>
+        <input type="number" step="0.01" id="fare" placeholder="0.00">
+      </div>
+      <div class="field">
+        <label>Trip Time (min)</label>
+        <input type="number" step="0.1" id="tripTime" placeholder="0">
+      </div>
+      <div class="field">
+        <label>Trip Distance (km)</label>
+        <input type="number" step="0.01" id="tripDist" placeholder="0">
+      </div>
+      <div class="field">
+        <label>Pickup Time (min)</label>
+        <input type="number" step="0.1" id="pickupTime" placeholder="0">
+      </div>
+      <div class="field full">
+        <label>Drop-off Location (if visible)</label>
+        <input type="text" id="dropoff" placeholder="e.g. Chestermere, Airdrie">
+      </div>
+    </div>
+
+    <button class="judge-btn" id="judgeBtn">Judge This Ride</button>
+  </div>
+
+  <!-- HISTORY PANEL -->
+  <div class="panel" id="panel-history">
+    <div class="history-list" id="historyList"></div>
+  </div>
+
+  <!-- SETTINGS PANEL -->
+  <div class="panel" id="panel-settings">
+    <div class="settings-group">
+      <h3>Thresholds</h3>
+      <div class="setting-row">
+        <span class="setting-label">Min $/minute</span>
+        <input type="number" step="0.01" class="setting-input" id="setMinPerMin" value="0.50">
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Min fare for long trips (>20 km)</span>
+        <input type="number" step="0.01" class="setting-input" id="setLongTripFare" value="15.00">
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Long trip distance (km)</span>
+        <input type="number" step="1" class="setting-input" id="setLongTripDist" value="20">
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Marginal zone (% of threshold)</span>
+        <input type="number" step="1" class="setting-input" id="setMarginalPct" value="10">
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3>Dead Zone Rules</h3>
+      <div class="setting-row">
+        <span class="setting-label">Dead zone min fare ($)</span>
+        <input type="number" step="0.01" class="setting-input" id="setDeadFare" value="25.00">
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">After hour (24h)</span>
+        <input type="number" step="1" class="setting-input" id="setDeadHour" value="18">
+      </div>
+      <div class="setting-row" style="flex-direction:column;align-items:stretch">
+        <span class="setting-label">Dead zone keywords (one per line)</span>
+        <textarea class="setting-textarea" id="setDeadKeywords">Chestermere
+Airdrie
+Cochrane
+Okotoks</textarea>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3>Voice</h3>
+      <div class="setting-row">
+        <span class="setting-label">Speak verdicts</span>
+        <button class="toggle on" id="toggleVoice"></button>
+      </div>
+    </div>
+
+    <button class="settings-save" id="saveSettings">Save Settings</button>
+  </div>
+</div>
+
+<!-- VERDICT OVERLAY -->
+<div class="verdict-overlay" id="verdictOverlay">
+  <div class="verdict-word" id="verdictWord"></div>
+  <div class="verdict-fare" id="verdictFare"></div>
+  <div class="verdict-reason" id="verdictReason"></div>
+  <div class="verdict-stats">
+    <div>
+      <div class="verdict-stat-value" id="vStatPerMin"></div>
+      <div class="verdict-stat-label">per min</div>
+    </div>
+    <div>
+      <div class="verdict-stat-value" id="vStatPerKm"></div>
+      <div class="verdict-stat-label">per km</div>
+    </div>
+    <div>
+      <div class="verdict-stat-value" id="vStatTotal"></div>
+      <div class="verdict-stat-label">total min</div>
+    </div>
+  </div>
+  <button class="verdict-close" id="verdictClose">Done</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// --- Settings ---
+const DEFAULT_SETTINGS = {
+  minPerMin: 0.50,
+  longTripFare: 15.00,
+  longTripDist: 20,
+  marginalPct: 10,
+  deadFare: 25.00,
+  deadHour: 18,
+  deadKeywords: ['Chestermere', 'Airdrie', 'Cochrane', 'Okotoks'],
+  voiceOn: true
+};
+
+function loadSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('rj_settings'));
+    return { ...DEFAULT_SETTINGS, ...saved };
+  } catch { return { ...DEFAULT_SETTINGS }; }
+}
+
+function saveSettingsToStorage() {
+  const s = {
+    minPerMin: parseFloat($('setMinPerMin').value) || 0.50,
+    longTripFare: parseFloat($('setLongTripFare').value) || 15,
+    longTripDist: parseFloat($('setLongTripDist').value) || 20,
+    marginalPct: parseFloat($('setMarginalPct').value) || 10,
+    deadFare: parseFloat($('setDeadFare').value) || 25,
+    deadHour: parseInt($('setDeadHour').value) || 18,
+    deadKeywords: $('setDeadKeywords').value.split('\n').map(k => k.trim()).filter(Boolean),
+    voiceOn: $('toggleVoice').classList.contains('on')
+  };
+  localStorage.setItem('rj_settings', JSON.stringify(s));
+  showToast('Settings saved');
+}
+
+function populateSettings() {
+  const s = loadSettings();
+  $('setMinPerMin').value = s.minPerMin;
+  $('setLongTripFare').value = s.longTripFare;
+  $('setLongTripDist').value = s.longTripDist;
+  $('setMarginalPct').value = s.marginalPct;
+  $('setDeadFare').value = s.deadFare;
+  $('setDeadHour').value = s.deadHour;
+  $('setDeadKeywords').value = s.deadKeywords.join('\n');
+  $('toggleVoice').classList.toggle('on', s.voiceOn);
+}
+
+// --- Tabs ---
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    $('panel-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'history') renderHistory();
+    if (tab.dataset.tab === 'settings') populateSettings();
+  });
+});
+
+$('toggleVoice').addEventListener('click', () => {
+  $('toggleVoice').classList.toggle('on');
+});
+
+$('saveSettings').addEventListener('click', saveSettingsToStorage);
+
+// --- Image upload ---
+let currentImage = null;
+
+$('fileInput').addEventListener('change', e => {
+  if (e.target.files[0]) handleImage(e.target.files[0]);
+});
+
+$('uploadZone').addEventListener('dragover', e => {
+  e.preventDefault();
+  $('uploadZone').classList.add('dragover');
+});
+
+$('uploadZone').addEventListener('dragleave', () => {
+  $('uploadZone').classList.remove('dragover');
+});
+
+$('uploadZone').addEventListener('drop', e => {
+  e.preventDefault();
+  $('uploadZone').classList.remove('dragover');
+  if (e.dataTransfer.files[0]) handleImage(e.dataTransfer.files[0]);
+});
+
+$('pasteBtn').addEventListener('click', async () => {
+  try {
+    const items = await navigator.clipboard.read();
+    for (const item of items) {
+      const imageType = item.types.find(t => t.startsWith('image/'));
+      if (imageType) {
+        const blob = await item.getType(imageType);
+        handleImage(blob);
+        return;
+      }
+    }
+    showToast('No image found in clipboard');
+  } catch {
+    showToast('Clipboard access denied. Try uploading instead.');
+  }
+});
+
+$('clearBtn').addEventListener('click', clearImage);
+
+function handleImage(file) {
+  currentImage = file;
+  const url = URL.createObjectURL(file);
+  $('previewImg').src = url;
+  $('previewWrap').style.display = 'block';
+  runOCR(file);
+}
+
+function clearImage() {
+  currentImage = null;
+  $('previewWrap').style.display = 'none';
+  $('fileInput').value = '';
+  clearFields();
+}
+
+function clearFields() {
+  ['fare', 'tripTime', 'tripDist', 'pickupTime', 'dropoff'].forEach(id => {
+    $(id).value = '';
+    $(id).classList.remove('ocr-filled');
+  });
+}
+
+// --- OCR ---
+async function runOCR(imageSource) {
+  $('ocrStatus').style.display = 'block';
+  clearFields();
+
+  try {
+    const result = await Tesseract.recognize(imageSource, 'eng', {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          const pct = Math.round((m.progress || 0) * 100);
+          $('ocrStatus').innerHTML = `<span class="spinner"></span> Reading... ${pct}%`;
+        }
+      }
+    });
+
+    const text = result.data.text;
+    console.log('OCR raw text:', text);
+    extractFields(text);
+  } catch (err) {
+    console.error('OCR error:', err);
+    showToast('OCR failed. Enter values manually.');
+  }
+
+  $('ocrStatus').style.display = 'none';
+}
+
+function extractFields(text) {
+  const lines = text.replace(/\r/g, '').split('\n').map(l => l.trim()).filter(Boolean);
+  const fullText = lines.join(' ');
+
+  // Fare: look for dollar amounts, take the largest as the trip fare
+  const fareMatches = [...fullText.matchAll(/\$\s?(\d+[\.,]\d{2})/g)];
+  if (fareMatches.length) {
+    const fares = fareMatches.map(m => parseFloat(m[1].replace(',', '.')));
+    const maxFare = Math.max(...fares);
+    setField('fare', maxFare.toFixed(2));
+  }
+
+  // Trip distance: look for km values
+  const distMatch = fullText.match(/(\d+[\.,]?\d*)\s*km/i);
+  if (distMatch) {
+    setField('tripDist', parseFloat(distMatch[1].replace(',', '.')).toFixed(2));
+  }
+
+  // Trip time: look for "XX min" patterns, but not "X min away" (that's pickup)
+  const timeMatches = [...fullText.matchAll(/(\d+\.?\d*)\s*min(?!\s*away)/gi)];
+  const pickupMatch = fullText.match(/(\d+\.?\d*)\s*min\s*away/i);
+
+  if (timeMatches.length) {
+    // Use the first non-pickup time match as trip time
+    setField('tripTime', parseFloat(timeMatches[0][1]).toFixed(1));
+  }
+
+  if (pickupMatch) {
+    setField('pickupTime', parseFloat(pickupMatch[1]).toFixed(1));
+  }
+
+  // Drop-off: check for known dead-zone keywords or general location names
+  const settings = loadSettings();
+  for (const kw of settings.deadKeywords) {
+    if (fullText.toLowerCase().includes(kw.toLowerCase())) {
+      setField('dropoff', kw);
+      break;
+    }
+  }
+}
+
+function setField(id, value) {
+  $(id).value = value;
+  $(id).classList.add('ocr-filled');
+}
+
+// --- Decision Engine ---
+function judgeRide() {
+  const fare = parseFloat($('fare').value);
+  const tripMin = parseFloat($('tripTime').value);
+  const tripKm = parseFloat($('tripDist').value);
+  const pickupMin = parseFloat($('pickupTime').value) || 0;
+  const dropoff = $('dropoff').value.trim();
+
+  if (!fare || !tripMin || !tripKm) {
+    showToast('Fill in fare, trip time, and distance');
+    return;
+  }
+
+  const s = loadSettings();
+  const totalMin = pickupMin + tripMin;
+  const perMin = fare / totalMin;
+  const perKm = fare / tripKm;
+
+  let verdict = 'accept';
+  let reason = '';
+
+  // Dead zone check
+  const now = new Date();
+  const currentHour = now.getHours();
+  const isDeadZone = s.deadKeywords.some(kw =>
+    dropoff.toLowerCase().includes(kw.toLowerCase())
+  );
+
+  if (isDeadZone && currentHour >= s.deadHour) {
+    if (fare < s.deadFare) {
+      verdict = 'reject';
+      reason = `${dropoff} after ${s.deadHour > 12 ? s.deadHour - 12 : s.deadHour} PM, need at least $${s.deadFare.toFixed(0)} for that dead zone`;
+      return finalize(verdict, reason, fare, perMin, perKm, totalMin, tripKm, pickupMin);
+    }
+  }
+
+  // Per-minute threshold
+  const minThreshold = s.minPerMin;
+  const marginalFloor = minThreshold * (1 - s.marginalPct / 100);
+
+  if (perMin < marginalFloor) {
+    verdict = 'reject';
+    const cents = Math.round(perMin * 100);
+    reason = `${cents} cents per minute, need at least ${Math.round(minThreshold * 100)} cents`;
+  } else if (perMin < minThreshold) {
+    verdict = 'marginal';
+    reason = `Borderline at ${perMin.toFixed(2)} per minute, just under your ${minThreshold.toFixed(2)} threshold`;
+  }
+
+  // Long trip fare check
+  if (tripKm > s.longTripDist && fare < s.longTripFare) {
+    if (verdict === 'accept') {
+      verdict = 'reject';
+      reason = `${tripKm.toFixed(1)} km trip but only $${fare.toFixed(2)}, need $${s.longTripFare.toFixed(0)} for trips over ${s.longTripDist} km`;
+    } else {
+      reason += `, plus ${tripKm.toFixed(1)} km needs $${s.longTripFare.toFixed(0)} minimum`;
+    }
+  }
+
+  // Good reason for accepts
+  if (verdict === 'accept') {
+    if (pickupMin > 0 && pickupMin <= 3) {
+      reason = `${perMin.toFixed(2)} per minute, quick ${pickupMin.toFixed(0)} min pickup`;
+    } else if (perKm >= 0.70) {
+      reason = `${Math.round(perKm * 100)} cents per km, solid rate`;
+    } else if (perMin >= minThreshold * 1.3) {
+      reason = `${perMin.toFixed(2)} per minute, well above your minimum`;
+    } else {
+      reason = `${perMin.toFixed(2)} per minute with ${totalMin.toFixed(0)} total minutes, clears your threshold`;
+    }
+  }
+
+  if (verdict === 'reject' && pickupMin >= 10) {
+    reason = `Pickup eats ${pickupMin.toFixed(0)} minutes, fare too low for the total time`;
+  }
+
+  finalize(verdict, reason, fare, perMin, perKm, totalMin, tripKm, pickupMin);
+}
+
+function finalize(verdict, reason, fare, perMin, perKm, totalMin, tripKm, pickupMin) {
+  // Show overlay
+  const overlay = $('verdictOverlay');
+  overlay.className = 'verdict-overlay show ' + verdict;
+  $('verdictWord').textContent = verdict.toUpperCase();
+  $('verdictFare').textContent = '$' + fare.toFixed(2);
+  $('verdictReason').textContent = reason;
+  $('vStatPerMin').textContent = '$' + perMin.toFixed(2);
+  $('vStatPerKm').textContent = '$' + perKm.toFixed(2);
+  $('vStatTotal').textContent = totalMin.toFixed(0);
+
+  // Speak
+  speak(verdict, reason);
+
+  // Save to history
+  saveRide({
+    verdict,
+    fare,
+    perMin,
+    perKm,
+    totalMin,
+    tripKm,
+    pickupMin: parseFloat($('pickupTime').value) || 0,
+    tripMin: parseFloat($('tripTime').value),
+    dropoff: $('dropoff').value.trim(),
+    reason,
+    ts: Date.now()
+  });
+}
+
+$('judgeBtn').addEventListener('click', judgeRide);
+$('verdictClose').addEventListener('click', () => {
+  $('verdictOverlay').classList.remove('show');
+});
+
+// --- TTS ---
+function speak(verdict, reason) {
+  const s = loadSettings();
+  if (!s.voiceOn || !window.speechSynthesis) return;
+
+  window.speechSynthesis.cancel();
+  const msg = new SpeechSynthesisUtterance(`${verdict}. ${reason}`);
+  msg.rate = 1.1;
+  msg.pitch = verdict === 'accept' ? 1.1 : 0.9;
+  window.speechSynthesis.speak(msg);
+}
+
+// --- History ---
+function getHistory() {
+  try { return JSON.parse(localStorage.getItem('rj_history')) || []; }
+  catch { return []; }
+}
+
+function saveRide(ride) {
+  const history = getHistory();
+  history.unshift(ride);
+  if (history.length > 20) history.length = 20;
+  localStorage.setItem('rj_history', JSON.stringify(history));
+}
+
+function renderHistory() {
+  const list = $('historyList');
+  const history = getHistory();
+
+  if (!history.length) {
+    list.innerHTML = '<div class="history-empty">No rides judged yet. Upload a screenshot to get started.</div>';
+    return;
+  }
+
+  list.innerHTML = history.map(r => {
+    const date = new Date(r.ts);
+    const timeStr = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return `
+      <div class="history-card ${r.verdict}">
+        <div class="history-left">
+          <div class="history-verdict">${r.verdict}</div>
+          <div class="history-detail">$${r.perMin.toFixed(2)}/min &middot; $${r.perKm.toFixed(2)}/km &middot; ${r.totalMin.toFixed(0)} min total</div>
+        </div>
+        <div>
+          <div class="history-fare">$${r.fare.toFixed(2)}</div>
+          <div class="history-time">${dateStr} ${timeStr}</div>
+        </div>
+      </div>
+    `;
+  }).join('') + '<button class="history-clear" onclick="clearHistory()">Clear History</button>';
+}
+
+function clearHistory() {
+  localStorage.removeItem('rj_history');
+  renderHistory();
+  showToast('History cleared');
+}
+
+// --- Toast ---
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// Init
+populateSettings();
+</script>
+</body>
+</html>
