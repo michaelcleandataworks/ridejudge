@@ -697,8 +697,24 @@ h1 span { color: var(--accent); }
         <input type="number" step="0.01" class="setting-input" id="setMarginalPerMin" value="0.40">
       </div>
       <div class="setting-row">
-        <span class="setting-label">Min $/km for marginal (CRA floor)</span>
-        <input type="number" step="0.01" class="setting-input" id="setMarginalPerKm" value="0.73">
+        <span class="setting-label">Min $/km for marginal</span>
+        <input type="number" step="0.01" class="setting-input" id="setMarginalPerKm" value="0.75">
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3>Peak Mode</h3>
+      <div class="setting-row">
+        <span class="setting-label">Peak mode (stricter)</span>
+        <button class="toggle" id="togglePeak"></button>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Peak $/min accept floor</span>
+        <input type="number" step="0.01" class="setting-input" id="setPeakPerMin" value="0.75">
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Peak $/km accept floor</span>
+        <input type="number" step="0.01" class="setting-input" id="setPeakPerKm" value="1.00">
       </div>
     </div>
 
@@ -774,8 +790,11 @@ const DEFAULT_SETTINGS = {
   acceptPerMin: 0.55,
   acceptPerKm: 0.90,
   marginalPerMin: 0.40,
-  marginalPerKm: 0.73,
+  marginalPerKm: 0.75,
   craPerKm: 0.73,
+  peakMode: false,
+  peakAcceptPerMin: 0.75,
+  peakAcceptPerKm: 1.00,
   pickupRatio: 0.33,
   pickupOverrideFare: 25,
   deadHour: 18,
@@ -795,8 +814,11 @@ function saveSettingsToStorage() {
     acceptPerMin: parseFloat($('setAcceptPerMin').value) || 0.55,
     acceptPerKm: parseFloat($('setAcceptPerKm').value) || 0.90,
     marginalPerMin: parseFloat($('setMarginalPerMin').value) || 0.40,
-    marginalPerKm: parseFloat($('setMarginalPerKm').value) || 0.73,
+    marginalPerKm: parseFloat($('setMarginalPerKm').value) || 0.75,
     craPerKm: parseFloat($('setCraPerKm').value) || 0.73,
+    peakMode: $('togglePeak').classList.contains('on'),
+    peakAcceptPerMin: parseFloat($('setPeakPerMin').value) || 0.75,
+    peakAcceptPerKm: parseFloat($('setPeakPerKm').value) || 1.00,
     pickupRatio: parseFloat($('setPickupRatio').value) || 0.33,
     pickupOverrideFare: parseFloat($('setPickupOverrideFare').value) || 25,
     deadHour: parseInt($('setDeadHour').value) || 18,
@@ -814,6 +836,9 @@ function populateSettings() {
   $('setMarginalPerMin').value = s.marginalPerMin;
   $('setMarginalPerKm').value = s.marginalPerKm;
   $('setCraPerKm').value = s.craPerKm;
+  $('togglePeak').classList.toggle('on', s.peakMode);
+  $('setPeakPerMin').value = s.peakAcceptPerMin;
+  $('setPeakPerKm').value = s.peakAcceptPerKm;
   $('setPickupRatio').value = s.pickupRatio;
   $('setPickupOverrideFare').value = s.pickupOverrideFare;
   $('setDeadHour').value = s.deadHour;
@@ -835,6 +860,10 @@ document.querySelectorAll('.tab').forEach(tab => {
 
 $('toggleVoice').addEventListener('click', () => {
   $('toggleVoice').classList.toggle('on');
+});
+
+$('togglePeak').addEventListener('click', () => {
+  $('togglePeak').classList.toggle('on');
 });
 
 $('saveSettings').addEventListener('click', saveSettingsToStorage);
@@ -1120,17 +1149,27 @@ function judgeRide() {
     pickupFail = pickupMin > tripMin * s.pickupRatio;
   }
 
-  // Dual-metric verdict
-  const minOk = perMin >= s.acceptPerMin;
-  const kmOk = perKm >= s.acceptPerKm;
+  // Dual-metric verdict (peak mode overrides accept thresholds)
+  const aMin = s.peakMode ? s.peakAcceptPerMin : s.acceptPerMin;
+  const aKm = s.peakMode ? s.peakAcceptPerKm : s.acceptPerKm;
+  const minOk = perMin >= aMin;
+  const kmOk = perKm >= aKm;
   const minMarg = perMin >= s.marginalPerMin;
   const kmMarg = perKm >= s.marginalPerKm;
+
+  // Speed flag: one metric clearly passes while other clearly fails
+  let speedFlag = '';
+  if (kmOk && perMin < s.marginalPerMin) {
+    speedFlag = 'Distance pays, but time is slow. Likely traffic.';
+  } else if (minOk && kmMarg && !kmOk) {
+    speedFlag = 'Time pays, distance is thin. Quick turnover.';
+  }
 
   let verdict, reason;
 
   if (perKm < s.marginalPerKm || perMin < s.marginalPerMin) {
     verdict = 'reject';
-    reason = `${craLine}`;
+    reason = craLine;
     if (perMin < s.marginalPerMin) reason += `, $${perMin.toFixed(2)}/min too low`;
   } else if (minOk && kmOk && !pickupFail) {
     verdict = 'accept';
@@ -1139,8 +1178,8 @@ function judgeRide() {
   } else {
     verdict = 'marginal';
     const notes = [];
-    if (!minOk) notes.push(`$${perMin.toFixed(2)}/min below ${s.acceptPerMin}`);
-    if (!kmOk) notes.push(`$${perKm.toFixed(2)}/km below ${s.acceptPerKm}`);
+    if (!minOk) notes.push(`$${perMin.toFixed(2)}/min below ${aMin}`);
+    if (!kmOk) notes.push(`$${perKm.toFixed(2)}/km below ${aKm}`);
     if (pickupFail) notes.push(`pickup ${pickupMin.toFixed(0)} min > 1/3 of trip`);
     reason = `${craLine}` + (notes.length ? `, ${notes.join(', ')}` : '');
   }
@@ -1149,6 +1188,9 @@ function judgeRide() {
     verdict = 'marginal';
     reason += `, pickup ${pickupMin.toFixed(0)} min > 1/3 of trip`;
   }
+
+  if (speedFlag) reason += ' — ' + speedFlag;
+  if (s.peakMode) reason = '⚡ Peak: ' + reason;
 
   finalize(verdict, reason, fare, perMin, perKm, totalMin, tripKm, pickupMin);
 }
@@ -1194,16 +1236,21 @@ function speak(verdict, reason) {
   if (!s.voiceOn || !window.speechSynthesis) return;
 
   window.speechSynthesis.cancel();
+  // Speed flag takes priority in speech
+  const hasSpeedFlag = reason.includes('Distance pays') || reason.includes('Time pays');
   const perKmMatch = reason.match(/\$(\d+\.\d+)\/km vs/);
   const perKmVal = perKmMatch ? perKmMatch[1] : '';
   let speech;
-  if (verdict === 'reject') {
+  if (hasSpeedFlag) {
+    speech = `${verdict}. ${reason}`;
+  } else if (verdict === 'reject') {
     speech = `Reject. ${perKmVal ? perKmVal + ' per kilometer, below break even' : reason}`;
   } else if (verdict === 'marginal') {
     speech = `Marginal. ${perKmVal ? perKmVal + ' per kilometer, thin profit' : reason}`;
   } else {
     speech = `Accept. ${perKmVal ? perKmVal + ' per kilometer, real profit' : reason}`;
   }
+  if (s.peakMode) speech = 'Peak mode. ' + speech;
   const msg = new SpeechSynthesisUtterance(speech);
   msg.rate = 1.1;
   msg.pitch = verdict === 'accept' ? 1.1 : 0.9;
@@ -1335,13 +1382,23 @@ function quickAutoJudge() {
   const perKm = fare / tripKm;
   const craDiff = perKm - s.craPerKm;
 
-  const minOk = perMin >= s.acceptPerMin;
-  const kmOk = perKm >= s.acceptPerKm;
+  const aMin = s.peakMode ? s.peakAcceptPerMin : s.acceptPerMin;
+  const aKm = s.peakMode ? s.peakAcceptPerKm : s.acceptPerKm;
+  const minOk = perMin >= aMin;
+  const kmOk = perKm >= aKm;
   const minMarg = perMin >= s.marginalPerMin;
   const kmMarg = perKm >= s.marginalPerKm;
 
   let verdict, reason;
   const craLine = `$${perKm.toFixed(2)}/km vs $${s.craPerKm.toFixed(2)} cost = ${craDiff >= 0 ? '+$' + craDiff.toFixed(2) : '-$' + Math.abs(craDiff).toFixed(2)}/km`;
+
+  // Speed flag: one metric clearly passes while other clearly fails
+  let speedFlag = '';
+  if (kmOk && perMin < s.marginalPerMin) {
+    speedFlag = 'Distance pays, but time is slow. Likely traffic.';
+  } else if (minOk && kmMarg && !kmOk) {
+    speedFlag = 'Time pays, distance is thin. Quick turnover.';
+  }
 
   if (perKm < s.marginalPerKm || perMin < s.marginalPerMin) {
     verdict = 'reject';
@@ -1354,8 +1411,11 @@ function quickAutoJudge() {
     reason = craLine;
   }
 
+  if (speedFlag) reason += ' — ' + speedFlag;
+
+  const peakTag = s.peakMode ? '⚡ ' : '';
   $('quickVerdict').className = 'quick-verdict ' + verdict;
-  $('quickVerdict').textContent = verdict.toUpperCase() + '  ' + reason;
+  $('quickVerdict').textContent = peakTag + verdict.toUpperCase() + '  ' + reason;
 
   speak(verdict, reason);
 
