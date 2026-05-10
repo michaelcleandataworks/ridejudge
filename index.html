@@ -671,6 +671,14 @@ h1 span { color: var(--accent); }
   <!-- SETTINGS PANEL -->
   <div class="panel" id="panel-settings">
     <div class="settings-group">
+      <h3>CRA Baseline</h3>
+      <div class="setting-row">
+        <span class="setting-label">CRA mileage rate ($/km)</span>
+        <input type="number" step="0.01" class="setting-input" id="setCraPerKm" value="0.73">
+      </div>
+    </div>
+
+    <div class="settings-group">
       <h3>Accept Thresholds (need both)</h3>
       <div class="setting-row">
         <span class="setting-label">Min $/minute to accept</span>
@@ -678,7 +686,7 @@ h1 span { color: var(--accent); }
       </div>
       <div class="setting-row">
         <span class="setting-label">Min $/km to accept</span>
-        <input type="number" step="0.01" class="setting-input" id="setAcceptPerKm" value="0.80">
+        <input type="number" step="0.01" class="setting-input" id="setAcceptPerKm" value="0.90">
       </div>
     </div>
 
@@ -689,29 +697,25 @@ h1 span { color: var(--accent); }
         <input type="number" step="0.01" class="setting-input" id="setMarginalPerMin" value="0.40">
       </div>
       <div class="setting-row">
-        <span class="setting-label">Min $/km for marginal</span>
-        <input type="number" step="0.01" class="setting-input" id="setMarginalPerKm" value="0.62">
+        <span class="setting-label">Min $/km for marginal (CRA floor)</span>
+        <input type="number" step="0.01" class="setting-input" id="setMarginalPerKm" value="0.73">
       </div>
     </div>
 
     <div class="settings-group">
-      <h3>Long Trip Override</h3>
+      <h3>Pickup Ratio</h3>
       <div class="setting-row">
-        <span class="setting-label">Min fare for long trips</span>
-        <input type="number" step="0.01" class="setting-input" id="setLongTripFare" value="15.00">
+        <span class="setting-label">Max pickup/trip ratio</span>
+        <input type="number" step="0.01" class="setting-input" id="setPickupRatio" value="0.33">
       </div>
       <div class="setting-row">
-        <span class="setting-label">Long trip distance (km)</span>
-        <input type="number" step="1" class="setting-input" id="setLongTripDist" value="20">
+        <span class="setting-label">Fare to override ratio ($)</span>
+        <input type="number" step="0.01" class="setting-input" id="setPickupOverrideFare" value="25">
       </div>
     </div>
 
     <div class="settings-group">
-      <h3>Dead Zone Rules</h3>
-      <div class="setting-row">
-        <span class="setting-label">Dead zone min fare ($)</span>
-        <input type="number" step="0.01" class="setting-input" id="setDeadFare" value="25.00">
-      </div>
+      <h3>Deadhead Zone Rules</h3>
       <div class="setting-row">
         <span class="setting-label">After hour (24h)</span>
         <input type="number" step="1" class="setting-input" id="setDeadHour" value="18">
@@ -721,7 +725,8 @@ h1 span { color: var(--accent); }
         <textarea class="setting-textarea" id="setDeadKeywords">Chestermere
 Airdrie
 Cochrane
-Okotoks</textarea>
+Okotoks
+Strathmore</textarea>
       </div>
     </div>
 
@@ -767,14 +772,14 @@ const $ = id => document.getElementById(id);
 // --- Settings ---
 const DEFAULT_SETTINGS = {
   acceptPerMin: 0.55,
-  acceptPerKm: 0.80,
+  acceptPerKm: 0.90,
   marginalPerMin: 0.40,
-  marginalPerKm: 0.62,
-  longTripFare: 15.00,
-  longTripDist: 20,
-  deadFare: 25.00,
+  marginalPerKm: 0.73,
+  craPerKm: 0.73,
+  pickupRatio: 0.33,
+  pickupOverrideFare: 25,
   deadHour: 18,
-  deadKeywords: ['Chestermere', 'Airdrie', 'Cochrane', 'Okotoks'],
+  deadKeywords: ['Chestermere', 'Airdrie', 'Cochrane', 'Okotoks', 'Strathmore'],
   voiceOn: true
 };
 
@@ -788,12 +793,12 @@ function loadSettings() {
 function saveSettingsToStorage() {
   const s = {
     acceptPerMin: parseFloat($('setAcceptPerMin').value) || 0.55,
-    acceptPerKm: parseFloat($('setAcceptPerKm').value) || 0.80,
+    acceptPerKm: parseFloat($('setAcceptPerKm').value) || 0.90,
     marginalPerMin: parseFloat($('setMarginalPerMin').value) || 0.40,
-    marginalPerKm: parseFloat($('setMarginalPerKm').value) || 0.62,
-    longTripFare: parseFloat($('setLongTripFare').value) || 15,
-    longTripDist: parseFloat($('setLongTripDist').value) || 20,
-    deadFare: parseFloat($('setDeadFare').value) || 25,
+    marginalPerKm: parseFloat($('setMarginalPerKm').value) || 0.73,
+    craPerKm: parseFloat($('setCraPerKm').value) || 0.73,
+    pickupRatio: parseFloat($('setPickupRatio').value) || 0.33,
+    pickupOverrideFare: parseFloat($('setPickupOverrideFare').value) || 25,
     deadHour: parseInt($('setDeadHour').value) || 18,
     deadKeywords: $('setDeadKeywords').value.split('\n').map(k => k.trim()).filter(Boolean),
     voiceOn: $('toggleVoice').classList.contains('on')
@@ -808,9 +813,9 @@ function populateSettings() {
   $('setAcceptPerKm').value = s.acceptPerKm;
   $('setMarginalPerMin').value = s.marginalPerMin;
   $('setMarginalPerKm').value = s.marginalPerKm;
-  $('setLongTripFare').value = s.longTripFare;
-  $('setLongTripDist').value = s.longTripDist;
-  $('setDeadFare').value = s.deadFare;
+  $('setCraPerKm').value = s.craPerKm;
+  $('setPickupRatio').value = s.pickupRatio;
+  $('setPickupOverrideFare').value = s.pickupOverrideFare;
   $('setDeadHour').value = s.deadHour;
   $('setDeadKeywords').value = s.deadKeywords.join('\n');
   $('toggleVoice').classList.toggle('on', s.voiceOn);
@@ -1093,71 +1098,56 @@ function judgeRide() {
   const s = loadSettings();
   const totalMin = pickupMin + tripMin;
   const perMin = fare / totalMin;
-  const perKm = fare / tripKm;
+  let effectiveKm = tripKm;
 
-  let verdict = 'accept';
-  let reason = '';
-
-  // Dead zone check
+  // Deadhead zone: double the km after hours
   const now = new Date();
   const currentHour = now.getHours();
-  const isDeadZone = s.deadKeywords.some(kw =>
+  const isDeadZone = dropoff && s.deadKeywords.some(kw =>
     dropoff.toLowerCase().includes(kw.toLowerCase())
   );
-
   if (isDeadZone && currentHour >= s.deadHour) {
-    if (fare < s.deadFare) {
-      verdict = 'reject';
-      reason = `${dropoff} after ${s.deadHour > 12 ? s.deadHour - 12 : s.deadHour} PM, need at least $${s.deadFare.toFixed(0)} for that dead zone`;
-      return finalize(verdict, reason, fare, perMin, perKm, totalMin, tripKm, pickupMin);
-    }
+    effectiveKm = tripKm * 2;
   }
 
-  // Dual-metric check: both per-min and per-km must clear the tier
+  const perKm = fare / effectiveKm;
+  const craDiff = perKm - s.craPerKm;
+  const craLine = `$${perKm.toFixed(2)}/km vs $${s.craPerKm.toFixed(2)} cost = ${craDiff >= 0 ? 'profit' : 'losing'} $${Math.abs(craDiff).toFixed(2)}/km`;
+
+  // Pickup ratio check
+  let pickupFail = false;
+  if (pickupMin > 0 && fare < s.pickupOverrideFare) {
+    pickupFail = pickupMin > tripMin * s.pickupRatio;
+  }
+
+  // Dual-metric verdict
   const minOk = perMin >= s.acceptPerMin;
   const kmOk = perKm >= s.acceptPerKm;
-  const minMarginal = perMin >= s.marginalPerMin;
-  const kmMarginal = perKm >= s.marginalPerKm;
+  const minMarg = perMin >= s.marginalPerMin;
+  const kmMarg = perKm >= s.marginalPerKm;
 
-  if (minOk && kmOk) {
-    verdict = 'accept';
-  } else if (minMarginal && kmMarginal) {
-    verdict = 'marginal';
-    const weak = [];
-    if (!minOk) weak.push(`${Math.round(perMin * 100)} cents/min (need ${Math.round(s.acceptPerMin * 100)})`);
-    if (!kmOk) weak.push(`${Math.round(perKm * 100)} cents/km (need ${Math.round(s.acceptPerKm * 100)})`);
-    reason = `Borderline: ${weak.join(', ')}`;
-  } else {
+  let verdict, reason;
+
+  if (perKm < s.marginalPerKm || perMin < s.marginalPerMin) {
     verdict = 'reject';
-    const fails = [];
-    if (!minMarginal) fails.push(`${Math.round(perMin * 100)} cents/min, need ${Math.round(s.marginalPerMin * 100)}`);
-    if (!kmMarginal) fails.push(`${Math.round(perKm * 100)} cents/km, need ${Math.round(s.marginalPerKm * 100)}`);
-    reason = fails.join(' and ');
+    reason = `${craLine}`;
+    if (perMin < s.marginalPerMin) reason += `, $${perMin.toFixed(2)}/min too low`;
+  } else if (minOk && kmOk && !pickupFail) {
+    verdict = 'accept';
+    reason = craLine;
+    if (isDeadZone && currentHour >= s.deadHour) reason += ` (deadhead doubled)`;
+  } else {
+    verdict = 'marginal';
+    const notes = [];
+    if (!minOk) notes.push(`$${perMin.toFixed(2)}/min below ${s.acceptPerMin}`);
+    if (!kmOk) notes.push(`$${perKm.toFixed(2)}/km below ${s.acceptPerKm}`);
+    if (pickupFail) notes.push(`pickup ${pickupMin.toFixed(0)} min > 1/3 of trip`);
+    reason = `${craLine}` + (notes.length ? `, ${notes.join(', ')}` : '');
   }
 
-  // Long trip fare override
-  if (tripKm > s.longTripDist && fare < s.longTripFare) {
-    if (verdict !== 'reject') {
-      verdict = 'reject';
-      reason = `${tripKm.toFixed(1)} km trip but only $${fare.toFixed(2)}, need $${s.longTripFare.toFixed(0)} for trips over ${s.longTripDist} km`;
-    } else {
-      reason += `, plus ${tripKm.toFixed(1)} km needs $${s.longTripFare.toFixed(0)} minimum`;
-    }
-  }
-
-  // Accept reasons
-  if (verdict === 'accept') {
-    if (pickupMin > 0 && pickupMin <= 3) {
-      reason = `$${perMin.toFixed(2)}/min and $${perKm.toFixed(2)}/km, quick ${pickupMin.toFixed(0)} min pickup`;
-    } else if (perMin >= s.acceptPerMin * 1.3 || perKm >= s.acceptPerKm * 1.3) {
-      reason = `$${perMin.toFixed(2)}/min and $${perKm.toFixed(2)}/km, well above your minimums`;
-    } else {
-      reason = `$${perMin.toFixed(2)}/min and $${perKm.toFixed(2)}/km, clears both thresholds`;
-    }
-  }
-
-  if (verdict === 'reject' && pickupMin >= 10) {
-    reason = `Pickup eats ${pickupMin.toFixed(0)} minutes, fare too low for the total time`;
+  if (pickupFail && verdict === 'accept') {
+    verdict = 'marginal';
+    reason += `, pickup ${pickupMin.toFixed(0)} min > 1/3 of trip`;
   }
 
   finalize(verdict, reason, fare, perMin, perKm, totalMin, tripKm, pickupMin);
@@ -1204,7 +1194,17 @@ function speak(verdict, reason) {
   if (!s.voiceOn || !window.speechSynthesis) return;
 
   window.speechSynthesis.cancel();
-  const msg = new SpeechSynthesisUtterance(`${verdict}. ${reason}`);
+  const perKmMatch = reason.match(/\$(\d+\.\d+)\/km vs/);
+  const perKmVal = perKmMatch ? perKmMatch[1] : '';
+  let speech;
+  if (verdict === 'reject') {
+    speech = `Reject. ${perKmVal ? perKmVal + ' per kilometer, below break even' : reason}`;
+  } else if (verdict === 'marginal') {
+    speech = `Marginal. ${perKmVal ? perKmVal + ' per kilometer, thin profit' : reason}`;
+  } else {
+    speech = `Accept. ${perKmVal ? perKmVal + ' per kilometer, real profit' : reason}`;
+  }
+  const msg = new SpeechSynthesisUtterance(speech);
   msg.rate = 1.1;
   msg.pitch = verdict === 'accept' ? 1.1 : 0.9;
   window.speechSynthesis.speak(msg);
@@ -1333,6 +1333,7 @@ function quickAutoJudge() {
   const s = loadSettings();
   const perMin = fare / tripMin;
   const perKm = fare / tripKm;
+  const craDiff = perKm - s.craPerKm;
 
   const minOk = perMin >= s.acceptPerMin;
   const kmOk = perKm >= s.acceptPerKm;
@@ -1340,21 +1341,17 @@ function quickAutoJudge() {
   const kmMarg = perKm >= s.marginalPerKm;
 
   let verdict, reason;
+  const craLine = `$${perKm.toFixed(2)}/km vs $${s.craPerKm.toFixed(2)} cost = ${craDiff >= 0 ? '+$' + craDiff.toFixed(2) : '-$' + Math.abs(craDiff).toFixed(2)}/km`;
 
-  // Dead zone check (no dropoff in quick mode, skip)
-  // Long trip override
-  if (tripKm > s.longTripDist && fare < s.longTripFare) {
+  if (perKm < s.marginalPerKm || perMin < s.marginalPerMin) {
     verdict = 'reject';
-    reason = `$${fare.toFixed(0)} for ${tripKm.toFixed(0)}km, need $${s.longTripFare.toFixed(0)}+`;
+    reason = craLine;
   } else if (minOk && kmOk) {
     verdict = 'accept';
-    reason = `$${perMin.toFixed(2)}/min $${perKm.toFixed(2)}/km`;
-  } else if (minMarg && kmMarg) {
-    verdict = 'marginal';
-    reason = `$${perMin.toFixed(2)}/min $${perKm.toFixed(2)}/km`;
+    reason = craLine;
   } else {
-    verdict = 'reject';
-    reason = `$${perMin.toFixed(2)}/min $${perKm.toFixed(2)}/km`;
+    verdict = 'marginal';
+    reason = craLine;
   }
 
   $('quickVerdict').className = 'quick-verdict ' + verdict;
