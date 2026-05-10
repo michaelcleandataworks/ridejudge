@@ -798,7 +798,6 @@ function extractFields(text) {
   console.log('OCR full text:', fullText);
 
   // Fare: flexible dollar matching — OCR may read $ as S, miss it, etc.
-  // Skip amounts followed by /hr. Try $ first, then S, then bare numbers at line starts.
   let fareFound = false;
   const farePatternsInOrder = [
     /[\$\xA4]\s?(\d+[\.,]\d{2})(?!\s*\/\s*h)/g,
@@ -812,7 +811,7 @@ function extractFields(text) {
       fareFound = true;
     }
   }
-  // Last resort: look for a line that's just a dollar amount (common OCR output for bold fare)
+  // Try bare number on its own line
   if (!fareFound) {
     for (const line of lines) {
       const m = line.match(/^[\$S]?\s?(\d+[\.,]\d{2})$/);
@@ -821,6 +820,16 @@ function extractFields(text) {
         fareFound = true;
         break;
       }
+    }
+  }
+  // Back-calculate from hourly rate if Lyft shows "$XX.XX/hr est. rate"
+  // fare = hourly_rate * total_minutes / 60
+  if (!fareFound) {
+    const hrMatch = fullText.match(/[\$S]?\s?(\d+[\.,]\d{2})\s*\/\s*h/i);
+    if (hrMatch) {
+      const hourlyRate = parseFloat(hrMatch[1].replace(',', '.'));
+      // We'll fill fare after we know total time — mark for deferred calc
+      window._rjHourlyRate = hourlyRate;
     }
   }
 
@@ -887,7 +896,26 @@ function extractFields(text) {
     }
   }
 
-  // Drop-off: first check dead-zone keywords, then try to extract destination text
+  // Sanity check: if distance > 200, OCR probably missed a decimal point
+  const distVal = parseFloat($('tripDist').value);
+  if (distVal > 200) {
+    setField('tripDist', (distVal / 10).toFixed(2));
+  } else if (distVal > 100) {
+    // Could be missing one decimal place (e.g., 247 → 24.7)
+    setField('tripDist', (distVal / 10).toFixed(2));
+  }
+
+  // Deferred fare calc from hourly rate (if direct fare extraction failed)
+  if (!fareFound && window._rjHourlyRate) {
+    const totalMin = (parseFloat($('pickupTime').value) || 0) + (parseFloat($('tripTime').value) || 0);
+    if (totalMin > 0) {
+      const calcFare = (window._rjHourlyRate * totalMin / 60);
+      setField('fare', calcFare.toFixed(2));
+    }
+    delete window._rjHourlyRate;
+  }
+
+  // Drop-off: first check dead-zone keywords, then extract destination address
   const settings = loadSettings();
   let dropoffFound = false;
   for (const kw of settings.deadKeywords) {
@@ -898,18 +926,16 @@ function extractFields(text) {
     }
   }
 
-  // Extract destination from address lines (text after the trip mins·km line)
+  // Use the LAST address line (destination, not pickup) containing Calgary markers
   if (!dropoffFound) {
-    const addressPatterns = [
-      /(?:NE|NW|SE|SW|Calgary|AB)\b/i,
-    ];
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (addressPatterns.some(p => p.test(line)) && !/min|km|\$|hr|est|rate|away|trip|Lyft|Uber|Accept/i.test(line)) {
-        setField('dropoff', line);
-        dropoffFound = true;
-        break;
+    let lastAddress = '';
+    for (const line of lines) {
+      if (/(?:NE|NW|SE|SW|Calgary|AB)\b/i.test(line) && !/min|km|\$|hr|est|rate|away|trip|Lyft|Uber|Accept/i.test(line)) {
+        lastAddress = line;
       }
+    }
+    if (lastAddress) {
+      setField('dropoff', lastAddress);
     }
   }
 }
