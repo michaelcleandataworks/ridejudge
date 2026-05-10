@@ -795,35 +795,63 @@ async function runOCR(imageSource) {
 function extractFields(text) {
   const lines = text.replace(/\r/g, '').split('\n').map(l => l.trim()).filter(Boolean);
   const fullText = lines.join(' ');
+  console.log('OCR lines:', lines);
 
-  // Fare: look for dollar amounts, take the largest as the trip fare
-  const fareMatches = [...fullText.matchAll(/\$\s?(\d+[\.,]\d{2})/g)];
+  // Fare: take the FIRST dollar amount, skip amounts followed by /hr or /hour
+  const fareMatches = [...fullText.matchAll(/\$\s?(\d+[\.,]\d{2})(?!\s*\/\s*h)/g)];
   if (fareMatches.length) {
-    const fares = fareMatches.map(m => parseFloat(m[1].replace(',', '.')));
-    const maxFare = Math.max(...fares);
-    setField('fare', maxFare.toFixed(2));
+    setField('fare', parseFloat(fareMatches[0][1].replace(',', '.')).toFixed(2));
   }
 
-  // Trip distance: look for km values
-  const distMatch = fullText.match(/(\d+[\.,]?\d*)\s*km/i);
-  if (distMatch) {
-    setField('tripDist', parseFloat(distMatch[1].replace(',', '.')).toFixed(2));
+  // Lyft format: "X mins · X.X km" appears twice (pickup then trip)
+  // Uber format: "X min (X.X km) away" for pickup, "X mins (X.X km) trip" for trip
+  const lyftPairs = [...fullText.matchAll(/(\d+\.?\d*)\s*min[s]?\s*[·•.\-]\s*(\d+\.?\d*)\s*km/gi)];
+  const uberAway = fullText.match(/(\d+\.?\d*)\s*min[s]?\s*\((\d+\.?\d*)\s*km\)\s*away/i);
+  const uberTrip = fullText.match(/(\d+\.?\d*)\s*min[s]?\s*\((\d+\.?\d*)\s*km\)\s*trip/i);
+
+  if (lyftPairs.length >= 2) {
+    // First pair is pickup, second is trip
+    setField('pickupTime', parseFloat(lyftPairs[0][1]).toFixed(1));
+    setField('tripTime', parseFloat(lyftPairs[1][1]).toFixed(1));
+    setField('tripDist', parseFloat(lyftPairs[1][2]).toFixed(2));
+  } else if (lyftPairs.length === 1) {
+    // Only one pair found, treat as trip
+    setField('tripTime', parseFloat(lyftPairs[0][1]).toFixed(1));
+    setField('tripDist', parseFloat(lyftPairs[0][2]).toFixed(2));
+  } else if (uberTrip) {
+    setField('tripTime', parseFloat(uberTrip[1]).toFixed(1));
+    setField('tripDist', parseFloat(uberTrip[2]).toFixed(2));
   }
 
-  // Trip time: look for "XX min" patterns, but not "X min away" (that's pickup)
-  const timeMatches = [...fullText.matchAll(/(\d+\.?\d*)\s*min(?!\s*away)/gi)];
-  const pickupMatch = fullText.match(/(\d+\.?\d*)\s*min\s*away/i);
-
-  if (timeMatches.length) {
-    // Use the first non-pickup time match as trip time
-    setField('tripTime', parseFloat(timeMatches[0][1]).toFixed(1));
+  if (uberAway) {
+    setField('pickupTime', parseFloat(uberAway[1]).toFixed(1));
   }
 
-  if (pickupMatch) {
-    setField('pickupTime', parseFloat(pickupMatch[1]).toFixed(1));
+  // Fallback: if no structured pairs found, try loose patterns
+  if (!lyftPairs.length && !uberTrip) {
+    const distMatch = fullText.match(/(\d+[\.,]?\d*)\s*km/i);
+    if (distMatch) {
+      setField('tripDist', parseFloat(distMatch[1].replace(',', '.')).toFixed(2));
+    }
+
+    const timeMatches = [...fullText.matchAll(/(\d+\.?\d*)\s*min[s]?/gi)];
+    if (timeMatches.length >= 2) {
+      setField('pickupTime', parseFloat(timeMatches[0][1]).toFixed(1));
+      setField('tripTime', parseFloat(timeMatches[1][1]).toFixed(1));
+    } else if (timeMatches.length === 1) {
+      setField('tripTime', parseFloat(timeMatches[0][1]).toFixed(1));
+    }
   }
 
-  // Drop-off: check for known dead-zone keywords or general location names
+  // Pickup from "X min away" (some Uber formats)
+  if (!uberAway && !lyftPairs.length) {
+    const awayMatch = fullText.match(/(\d+\.?\d*)\s*min[s]?\s*away/i);
+    if (awayMatch) {
+      setField('pickupTime', parseFloat(awayMatch[1]).toFixed(1));
+    }
+  }
+
+  // Drop-off: check for known dead-zone keywords
   const settings = loadSettings();
   for (const kw of settings.deadKeywords) {
     if (fullText.toLowerCase().includes(kw.toLowerCase())) {
