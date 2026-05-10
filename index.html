@@ -831,6 +831,17 @@ function extractFields(text) {
   let hourlyRate = 0;
   const hrFare = allFares.find(f => f.isHourly);
   if (hrFare) hourlyRate = hrFare.val;
+  // Broader hourly rate search: look for "XX.XX/hr" anywhere, even without $
+  if (!hourlyRate) {
+    const hrBroad = fullText.match(/(\d+[\.,]\d{2})\s*\/\s*h/i);
+    if (hrBroad) hourlyRate = parseFloat(hrBroad[1].replace(',', '.'));
+  }
+  // Even broader: "est. rate" or "est rate" near a number
+  if (!hourlyRate) {
+    const estMatch = fullText.match(/(\d+[\.,]\d{2})\s*\/?\s*h?r?\s*est/i);
+    if (estMatch) hourlyRate = parseFloat(estMatch[1].replace(',', '.'));
+  }
+  console.log('OCR hourly rate:', hourlyRate);
 
   // --- TIME & DISTANCE ---
   // Lyft: "X mins · X.X km" with very flexible separator
